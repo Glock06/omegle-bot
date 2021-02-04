@@ -10,7 +10,6 @@ module.exports = {
     run: async (client, message, args) => {
 
         let topic = args[0];
-        let counter = 0;
         const filter = m => m.author.id === message.author.id
         const collector = new Discord.MessageCollector(message.channel, filter)
         
