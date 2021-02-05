@@ -1,165 +1,111 @@
-const {MessageEmbed} = require('discord.js')
 const Omegle = require('omegle-node');
-const om = new Omegle();
-const Discord = require('discord.js')
-
+const Disc = require('discord.js')
+const OClient = new Omegle();
 
 module.exports = {
     name: "connect",
-    description: "connect to omegle server",
     run: async (client, message, args) => {
+    let Params = args.join(" ").split(" ");
+    let CachedMessages = [];
 
-        let topic = args[0];
-        const filter = m => m.author.id === message.author.id
-        const collector = new Discord.MessageCollector(message.channel, filter)
-        
-        if(topic) {
-            om.connect(topic);
-            om.on('recaptchaRequired',function(challenge){
-                
-                console.log(challenge);
-                
-            });
-            const sembed = new MessageEmbed()
-            .setTitle(`Connected`)
-            .setTimestamp()
-            .setColor('RANDOM')
-            .setDescription(`You have connected to the server, type anything after to send them something, or type exit to leave.`)
-             
-            om.on('omerror',function(err){
-                console.log('error: ' + err);
-                message.channel.send('Error: ' + err);
-            });
+    let ConEmbed = new Disc.MessageEmbed();
+    ConEmbed.setTitle("Connection Established");
+    ConEmbed.setDescription(`Connection To Omegle Established.`);
+    ConEmbed.setColor("GREEN");
 
-            om.on('gotID',function(id){
-                console.log('connected to the server as: ' + id);
-                message.channel.send('connecting to the server as: ' + id);
-                setTimeout(function(){
-                    if(!om.connected()){
-                        om.stopLookingForCommonLikes();
-                        console.log('Connecting to a random stranger instead...');
-                        message.channel.send('No user found. Connecting to a random stranger instead...');
-                    }
-                }, 20000)
-            });
+    let UFoundEmbed = new Disc.MessageEmbed();
+    UFoundEmbed.setTitle("User Found");
+    UFoundEmbed.setDescription(`Now Speaking To Stranger.`);
+    UFoundEmbed.setColor("GREEN");
 
-            om.on('waiting', function(){
-                console.log('waiting for a stranger.');
-            });
+    let FSesEmbed = new Disc.MessageEmbed();
+    FSesEmbed.setTitle("Finding New Session");
+    FSesEmbed.setDescription(`Attempting To Find Another Session.`);
+    FSesEmbed.setColor("ORANGE");
 
-            om.on('connected',function(){
-                console.log('connected');
-                message.channel.send(sembed);
-                collector.on('collect', m => {
-                    console.log(m.content);
+    let UDiscEmbed = new Disc.MessageEmbed();
+    UDiscEmbed.setTitle("Stranger Disconnected");
+    UDiscEmbed.setColor("RED");
+    UDiscEmbed.setTimestamp()
 
-                    if(m.content === "exit"){
-                        om.disconnect();
-                        return;
-                    }
+    let MDiscEmbed = new Disc.MessageEmbed();
+    MDiscEmbed.setTitle("Disconnected");
+    MDiscEmbed.setDescription(`Do You Wish To Find Another Session?`);
+    MDiscEmbed.setColor("RED");
+    MDiscEmbed.setFooter("Send Yes To Find Another Session Or No To Cancel")
 
-                    om.send(m.content)
-                    message.channel.send("You sent stranger: " + m.content)
+    let CEmbed = new Disc.MessageEmbed();
+    CEmbed.setTitle("Talking To Stranger");
+
+    let SMSG = await message.channel.send("Connecting...");
+    Params[0] != null ? OClient.connect(Params[0]) : OClient.connect();
+    const MCollect = new Disc.MessageCollector(message.channel, (m => m.author.id === message.author.id));
+
     
-                })
-                om.startTyping();
-                setTimeout(function(){
-                    om.stopTyping();
-                },3000);
-            });
+    OClient.on('gotID', async function(id) {
+        SMSG.edit(ConEmbed);
+        console.log(id)
+    });
 
-            om.on('connectionDied', function(){
-                console.log('connection died')
-            })
+    OClient.on('omerror', function(err) {
+        console.error(err);
+    });
 
-            om.on('strangerDisconnected', () => {
-                message.channel.send(`Stranger disconnected...`)
-                om.disconnect();
-            });
+    OClient.on('strangerDisconnected', () => {
+        OClient.disconnect();
+        SMSG.delete();
+        MCollect.stop();
+        message.channel.send(UDiscEmbed)
+        message.guild.channels.cache.find(r => r.name === "cached-messages-for-omegle").send(`${message.author.tag} Omegle Chat:\n` + `\`\`\`` +  CachedMessages.join("\n") + `\`\`\``);
+        CachedMessages = [];
+        delete require.cache[require.resolve(`./connect.js`)];
 
-            om.on('typing',function(){
-                message.channel.send('Stranger is typing...');
-            });
-            
-            om.on('stoppedTyping',function(){
-                message.channel.send('Stranger stopped typing.');
-            });
+		try {
+			const newCommand = require(`./connect.js`);
+			message.client.commands.set(newCommand.name, newCommand);
+		} catch (error) {
+			console.error(error);
+		}
+    });
 
-            om.on('gotMessage',function(msg){
-                message.channel.send('Stranger said: ' + msg);
-                om.startTyping();
-            });
+    OClient.on('gotMessage', function(msg) {
+        let date = new Date();
+        CachedMessages.push(`Stranger Said: ${msg} | ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}`);
+        if (CachedMessages.length > 20) CachedMessages.shift()
+        CEmbed.setDescription(`\`\`\`${CachedMessages.join("\n")}\`\`\``);
+        SMSG.edit(CEmbed);
+        OClient.startTyping();
+    });
+
+    OClient.on('connected', async function() {
+        SMSG.edit(UFoundEmbed);
+        MCollect.on('collect', m => {
+            if (m.content.toLowerCase() === "disconnect" && OClient.connected) {
+                SMSG.delete();
+                message.guild.channels.cache.find(r => r.name === "cached-messages-for-omegle").send(`${message.author.tag} Omegle Chat:\n` + `\`\`\`` +  CachedMessages.join("\n") + `\`\`\``);
+                OClient.disconnect();
+                MCollect.stop();
+                CachedMessages = [];
+                delete require.cache[require.resolve(`./connect.js`)];
+
+                try {
+                    const newCommand = require(`./connect.js`);
+                    message.client.commands.set(newCommand.name, newCommand);
+                } catch (error) {
+                    console.error(error);
+                }
+                return;
+            }
+
+            let date = new Date();
+            OClient.send(m.content)
+            CachedMessages.push(`You Said: ${m.content} | ${date.getHours()}:${date.getMinutes()}:${date.getSeconds()}`);
+            if (CachedMessages.length > 20) CachedMessages.shift()
+            CEmbed.setDescription(`\`\`\`${CachedMessages.join("\n")}\`\`\``);
+            SMSG.edit(CEmbed);
 
             return;
-        }
-
-        om.connect();
-        om.on("recaptchaRequired", function(challenge) {
-            console.log(`Captcha Required: ${challenge}`)
         })
-        const nembed = new MessageEmbed()
-        .setTitle('Connected')
-        .setTimestamp()
-        .setColor('RANDOM')
-        .setDescription('You have connected to a random server, type anything after to send them something, or type exit to leave.')
-
-        om.on('omerror', function(err){
-            console.log('error: ' + err)
-        });
-
-        om.on('omegleError', function(error){
-            return;
-        })
-
-        om.on('gotID',function(id){
-            console.log('connected to the server as: ' + id);
-            message.channel.send('connecting to the server as: ' + id);
-            
-        });
-
-        om.on('waiting', function(){
-            console.log('waiting for a stranger.');
-        });
-
-        om.on('connected', function(){
-            console.log('connected');
-            om.startTyping();
-            message.channel.send(nembed);
-            collector.on('collect', m => {
-                console.log(m.content);
-                om.send(m.content)
-                message.channel.send("You sent stranger: " + m.content)
-
-            }).catch(e => console.log(e))
-            setTimeout(function(){
-                om.stopTyping();
-            },3000);
-        });
-
-        om.on('connectionDied', function(){
-            console.log('connection died')
-        })
-
-        om.on('strangerDisconnected', () => {
-            message.channel.send(`Stranger disconnected...`)
-        });
-
-        om.on('typing',function(){
-            message.channel.send('Stranger is typing...');
-        });
-        
-        om.on('stoppedTyping',function(){
-            message.channel.send('Stranger stopped typing.');
-        });
-
-        om.on('gotMessage',function(msg){
-            message.channel.send('Stranger said: ' + msg);
-            om.startTyping();
-        });
-
-            
-
-        
-
+    });
     }
 }
